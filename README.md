@@ -122,6 +122,11 @@ Profiles are auto-created by trigger on auth.users insertion.
 - Faculty can read all proof files.
 - Students can read only proof files inside their own folder.
 
+## Authors
+
+1. Nithila K - RA2411003040029
+2. Sandhya Dillybabu - RA2411003040080
+
 ## Deployment Notes
 
 Wrangler is configured with worker name sams in wrangler.jsonc.
