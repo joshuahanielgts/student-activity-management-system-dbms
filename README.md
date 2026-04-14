@@ -166,3 +166,4 @@ Set these in Vercel Project Settings > Environment Variables:
 4. Deploy
 
 Tip: For local parity, copy .env.example to .env and fill values.
+
