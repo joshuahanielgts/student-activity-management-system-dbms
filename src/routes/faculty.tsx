@@ -166,7 +166,7 @@ function FacultyDashboard() {
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            {success && <p className="text-sm text-green-600">{success}</p>}
+            {success && <p className="text-sm text-primary">{success}</p>}
             <Button type="submit" disabled={submitting}>
               {submitting ? "Submitting…" : "Log Activity"}
             </Button>
