@@ -1,19 +1,33 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/")({
-  component: Index,
+  head: () => ({
+    meta: [
+      { title: "Student Activity Log System" },
+      { name: "description", content: "Track and manage student extracurricular activities" },
+    ],
+  }),
+  component: LandingPage,
 });
 
-// IMPORTANT: Replace this placeholder. For sites with multiple pages (About, Services, Contact, etc.),
-// create separate route files (about.tsx, services.tsx, contact.tsx) — don't put all pages in this file.
-function PlaceholderIndex() {
+function LandingPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
+      <div className="max-w-lg text-center space-y-6">
+        <h1 className="text-4xl font-bold tracking-tight text-foreground">
+          Student Activity Log System
+        </h1>
+        <p className="text-muted-foreground text-lg">
+          Track extracurricular activities, earn points, and build your student portfolio.
+        </p>
+        <Link to="/login">
+          <Button size="lg" className="mt-4">
+            Login
+          </Button>
+        </Link>
+      </div>
     </div>
   );
-}
-
-function Index() {
-  return <PlaceholderIndex />;
 }
