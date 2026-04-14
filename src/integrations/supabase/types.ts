@@ -14,13 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_logs: {
+        Row: {
+          activity_name: string
+          created_at: string | null
+          date: string
+          faculty_id: string
+          id: string
+          points: number
+          proof_url: string | null
+          student_id: string
+        }
+        Insert: {
+          activity_name: string
+          created_at?: string | null
+          date: string
+          faculty_id: string
+          id?: string
+          points: number
+          proof_url?: string | null
+          student_id: string
+        }
+        Update: {
+          activity_name?: string
+          created_at?: string | null
+          date?: string
+          faculty_id?: string
+          id?: string
+          points?: number
+          proof_url?: string | null
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_logs_faculty_id_fkey"
+            columns: ["faculty_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          id: string
+          name: string
+          register_number: string
+        }
+        Insert: {
+          id: string
+          name: string
+          register_number: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          register_number?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: { Args: { _role: string; _user_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
