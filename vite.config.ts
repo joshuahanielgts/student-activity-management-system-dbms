@@ -17,6 +17,15 @@ export default defineConfig(({ command }) => {
 			tailwindcss(),
 			tanstackStart({
 				customViteReactPlugin: true,
+				spa: isVercelBuild
+					? {
+						enabled: true,
+						maskPath: "/",
+						prerender: {
+							outputPath: "/_shell",
+						},
+					}
+					: undefined,
 			}),
 			react(),
 			command === "build" && !isVercelBuild ? cloudflare() : null,
