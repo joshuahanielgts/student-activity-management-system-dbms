@@ -79,8 +79,15 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('proofs', 'proofs', false
 CREATE POLICY "faculty_upload_proofs" ON storage.objects
   FOR INSERT WITH CHECK (bucket_id = 'proofs' AND public.has_role(auth.uid(), 'faculty'));
 
-CREATE POLICY "authenticated_read_proofs" ON storage.objects
-  FOR SELECT USING (bucket_id = 'proofs' AND auth.role() = 'authenticated');
+CREATE POLICY "faculty_read_all_proofs" ON storage.objects
+  FOR SELECT USING (bucket_id = 'proofs' AND public.has_role(auth.uid(), 'faculty'));
+
+CREATE POLICY "student_read_own_proofs" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'proofs'
+    AND public.has_role(auth.uid(), 'student')
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 -- Auto-create profile trigger
 CREATE OR REPLACE FUNCTION public.handle_new_user()

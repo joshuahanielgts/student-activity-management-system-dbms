@@ -1,7 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, type FormEvent } from "react";
-import { useAuth } from "@/lib/auth";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
+import { resolveProofUrl } from "@/lib/proof-storage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 export const Route = createFileRoute("/faculty")({
   head: () => ({
     meta: [
-      { title: "Faculty Dashboard — Student Activity Log" },
+      { title: "Faculty Dashboard — SAMS" },
     ],
   }),
   component: FacultyDashboard,
@@ -24,14 +25,36 @@ interface LogEntry {
   points: number;
   proof_url: string | null;
   created_at: string | null;
+  student_name: string;
+  student_register_number: string;
   student: { name: string; register_number: string } | null;
+}
+
+async function withTimeout<T>(operation: PromiseLike<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race<T>([
+      Promise.resolve(operation),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function FacultyDashboard() {
   const { user, role, isLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [studentRegNo, setStudentRegNo] = useState("");
+  const [studentName, setStudentName] = useState("");
+  const [studentRegisterNumber, setStudentRegisterNumber] = useState("");
   const [activityName, setActivityName] = useState("");
   const [date, setDate] = useState("");
   const [points, setPoints] = useState("");
@@ -46,17 +69,31 @@ function FacultyDashboard() {
     }
   }, [user, role, isLoading, navigate]);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     const { data } = await supabase
       .from("activity_logs")
-      .select("id, activity_name, date, points, proof_url, created_at, student:profiles!activity_logs_student_id_fkey(name, register_number)")
+      .select("id, activity_name, date, points, proof_url, created_at, student_name, student_register_number, student:profiles!activity_logs_student_id_fkey(name, register_number)")
       .order("created_at", { ascending: false });
-    if (data) setLogs(data as unknown as LogEntry[]);
-  };
+
+    if (!data) {
+      return;
+    }
+
+    const resolvedLogs = await Promise.all(
+      (data as unknown as LogEntry[]).map(async (entry) => ({
+        ...entry,
+        proof_url: await resolveProofUrl(entry.proof_url),
+      })),
+    );
+
+    setLogs(resolvedLogs);
+  }, []);
 
   useEffect(() => {
-    if (user && role === "faculty") fetchLogs();
-  }, [user, role]);
+    if (user && role === "faculty") {
+      void fetchLogs();
+    }
+  }, [user, role, fetchLogs]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -65,50 +102,83 @@ function FacultyDashboard() {
     setSubmitting(true);
 
     try {
-      // Find student by register number
-      const { data: student, error: studentErr } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("register_number", studentRegNo.trim())
-        .single();
+      const normalizedStudentName = studentName.trim();
+      const normalizedRegisterNumber = studentRegisterNumber.trim();
 
-      if (studentErr || !student) {
-        setError("Student not found with that register number");
+      if (!normalizedStudentName || !normalizedRegisterNumber) {
+        setError("Student name and register number are required");
         setSubmitting(false);
         return;
       }
+
+      const { data: matchedStudent, error: lookupError } = await withTimeout(
+        supabase
+          .from("profiles")
+          .select("id")
+          .eq("register_number", normalizedRegisterNumber)
+          .maybeSingle(),
+        10000,
+        "Student lookup timed out. Please try again.",
+      );
+
+      if (lookupError) {
+        setError("Unable to verify student details right now. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      const matchedStudentId = matchedStudent?.id ?? null;
 
       let proofUrl: string | null = null;
 
       // Upload PDF if provided
       if (proofFile) {
-        const filePath = `${student.id}/${Date.now()}_${proofFile.name}`;
-        const { error: uploadErr } = await supabase.storage
-          .from("proofs")
-          .upload(filePath, proofFile, { contentType: "application/pdf" });
+        if (proofFile.type !== "application/pdf") {
+          setError("Only PDF files are allowed for proof uploads");
+          setSubmitting(false);
+          return;
+        }
+
+        const sanitizedFileName = proofFile.name.replace(/\s+/g, "_");
+        const storageOwnerSegment = matchedStudentId ?? normalizedRegisterNumber.replace(/[^a-zA-Z0-9_-]/g, "_");
+        const filePath = `${storageOwnerSegment}/${Date.now()}_${sanitizedFileName}`;
+        const { error: uploadErr } = await withTimeout(
+          supabase.storage
+            .from("proofs")
+            .upload(filePath, proofFile, { contentType: "application/pdf" }),
+          30000,
+          "Proof upload timed out. Please try again.",
+        );
         if (uploadErr) {
           setError("Failed to upload proof: " + uploadErr.message);
           setSubmitting(false);
           return;
         }
-        const { data: urlData } = supabase.storage.from("proofs").getPublicUrl(filePath);
-        proofUrl = urlData.publicUrl;
+
+        proofUrl = filePath;
       }
 
-      const { error: insertErr } = await supabase.from("activity_logs").insert({
-        student_id: student.id,
-        faculty_id: user!.id,
-        activity_name: activityName.trim(),
-        date,
-        points: parseInt(points, 10),
-        proof_url: proofUrl,
-      });
+      const { error: insertErr } = await withTimeout(
+        supabase.from("activity_logs").insert({
+          student_id: matchedStudentId,
+          student_name: normalizedStudentName,
+          student_register_number: normalizedRegisterNumber,
+          faculty_id: user!.id,
+          activity_name: activityName.trim(),
+          date,
+          points: parseInt(points, 10),
+          proof_url: proofUrl,
+        }),
+        20000,
+        "Saving activity timed out. Please try again.",
+      );
 
       if (insertErr) {
         setError(insertErr.message);
       } else {
         setSuccess("Activity logged successfully!");
-        setStudentRegNo("");
+        setStudentName("");
+        setStudentRegisterNumber("");
         setActivityName("");
         setDate("");
         setPoints("");
@@ -129,7 +199,12 @@ function FacultyDashboard() {
     <div className="min-h-screen bg-background p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Faculty Dashboard</h1>
-        <Button variant="outline" onClick={signOut}>Sign Out</Button>
+        <div className="flex items-center gap-2">
+          <Link to="/leaderboard">
+            <Button variant="outline">Leaderboard</Button>
+          </Link>
+          <Button variant="outline" onClick={signOut}>Sign Out</Button>
+        </div>
       </div>
 
       <Card>
@@ -140,8 +215,27 @@ function FacultyDashboard() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="studentReg">Student Register No.</Label>
-                <Input id="studentReg" value={studentRegNo} onChange={(e) => setStudentRegNo(e.target.value)} placeholder="e.g. STU001" required />
+                <Label htmlFor="studentName">Student Name</Label>
+                <Input
+                  id="studentName"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  placeholder="e.g. Nithila K"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="studentRegisterNumber">Register Number</Label>
+                <Input
+                  id="studentRegisterNumber"
+                  value={studentRegisterNumber}
+                  onChange={(e) => setStudentRegisterNumber(e.target.value)}
+                  placeholder="e.g. RA2411003040029"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter details exactly as provided by the student. Account signup is not required to log activity.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="actName">Activity Name</Label>
@@ -197,8 +291,8 @@ function FacultyDashboard() {
                 <TableBody>
                   {logs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell>{log.student?.name ?? "—"}</TableCell>
-                      <TableCell>{log.student?.register_number ?? "—"}</TableCell>
+                      <TableCell>{log.student?.name ?? log.student_name}</TableCell>
+                      <TableCell>{log.student?.register_number ?? log.student_register_number}</TableCell>
                       <TableCell>{log.activity_name}</TableCell>
                       <TableCell>{log.date}</TableCell>
                       <TableCell>{log.points}</TableCell>

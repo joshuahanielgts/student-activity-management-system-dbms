@@ -23,7 +23,9 @@ export type Database = {
           id: string
           points: number
           proof_url: string | null
-          student_id: string
+          student_id: string | null
+          student_name: string
+          student_register_number: string
         }
         Insert: {
           activity_name: string
@@ -33,7 +35,9 @@ export type Database = {
           id?: string
           points: number
           proof_url?: string | null
-          student_id: string
+          student_id?: string | null
+          student_name: string
+          student_register_number: string
         }
         Update: {
           activity_name?: string
@@ -43,7 +47,9 @@ export type Database = {
           id?: string
           points?: number
           proof_url?: string | null
-          student_id?: string
+          student_id?: string | null
+          student_name?: string
+          student_register_number?: string
         }
         Relationships: [
           {
@@ -103,7 +109,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_public_leaderboard: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          activity_count: number
+          last_activity_date: string | null
+          student_name: string
+          student_register_number: string
+          total_points: number
+        }[]
+      }
       has_role: { Args: { _role: string; _user_id: string }; Returns: boolean }
+      list_students_for_faculty: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          email: string
+          id: string
+          name: string
+          register_number: string
+        }[]
+      }
+      resolve_login_email: { Args: { _identifier: string }; Returns: string | null }
+      sync_current_user_role: { Args: Record<PropertyKey, never>; Returns: string }
     }
     Enums: {
       [_ in never]: never
